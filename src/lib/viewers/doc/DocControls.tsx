@@ -10,6 +10,7 @@ import PageControls, { Props as PageControlsProps } from '../controls/page';
 import RotateControl, { Props as RotateControlProps } from '../controls/rotate/RotateControl';
 import ThumbnailsToggle, { Props as ThumbnailsToggleProps } from '../controls/sidebar';
 import ZoomControls, { Props as ZoomControlsProps } from '../controls/zoom';
+import AutoCADReviewToggle, { Props as AutoCADReviewToggleProps } from './AutoCADReviewToggle';
 
 export type Props = AnnotationsControlsProps &
     DrawingControlsProps &
@@ -20,7 +21,8 @@ export type Props = AnnotationsControlsProps &
     PageControlsProps &
     Partial<RotateControlProps> &
     ThumbnailsToggleProps &
-    ZoomControlsProps & {
+    ZoomControlsProps &
+    AutoCADReviewToggleProps & {
         hasGalleryZoom?: boolean;
     };
 
@@ -32,6 +34,7 @@ export default function DocControls({
     hasGalleryZoom = false,
     hasHighlight,
     hasRegion,
+    isDwgReviewOpen,
     isGalleryOpen,
     isThumbnailsOpen,
     maxScale,
@@ -39,6 +42,7 @@ export default function DocControls({
     onAnnotationColorChange,
     onAnnotationModeClick,
     onAnnotationModeEscape,
+    onDwgReviewToggle,
     onFindBarToggle,
     onFullscreenToggle,
     onGalleryToggle,
@@ -63,6 +67,10 @@ export default function DocControls({
                                 onThumbnailsToggle={onThumbnailsToggle}
                             />
                             <FindBarToggle onFindBarToggle={onFindBarToggle} />
+                            <AutoCADReviewToggle
+                                isDwgReviewOpen={isDwgReviewOpen}
+                                onDwgReviewToggle={onDwgReviewToggle}
+                            />
                         </ControlsBarGroup>
                         <ControlsBarGroup isDistinct>
                             <PageControls

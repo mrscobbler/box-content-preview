@@ -83,6 +83,7 @@
 
                 <div class="container" id="load">
                     <button onClick="loadPreview()" data-testid="load-preview">Load Preview</button>
+                    <div>DWG review POC: load a .dwg file. Disable with ?dwgReview=0</div>
                 </div>
             </div>
 
@@ -148,6 +149,12 @@
                     enableThumbnailsSidebar: true,
                     showAnnotations: true,
                     showDownload: true,
+                    // Experimental DWG drawing-review panel (AutoCADViewer only; default on in start:dev)
+                    viewers: {
+                        AutoCAD: {
+                            enableDwgReviewPoc: true,
+                        },
+                    },
                 };
                 previewOptions.container = '.preview-container';
 

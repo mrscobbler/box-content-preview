@@ -1,0 +1,5 @@
+@import '../controls/styles';
+
+.bp-AutoCADReviewToggle {
+    @include bp-Control;
+}

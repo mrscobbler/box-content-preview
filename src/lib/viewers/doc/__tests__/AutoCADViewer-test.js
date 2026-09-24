@@ -85,4 +85,10 @@ describe('lib/viewers/doc/AutoCADViewer', () => {
             });
         });
     });
+
+    describe('isReviewPocEnabled()', () => {
+        test('should stay on the document viewer and not enable the panel in unit tests by default', () => {
+            expect(autocad.isReviewPocEnabled()).toBe(false);
+        });
+    });
 });

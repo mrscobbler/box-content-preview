@@ -1687,7 +1687,7 @@ class DocBaseViewer extends BaseViewer {
      * @protected
      * @return {void}
      */
-    renderUI() {
+    renderUI(extraProps) {
         if (!this.controls) {
             return;
         }
@@ -1730,6 +1730,7 @@ class DocBaseViewer extends BaseViewer {
                 pageCount={this.pdfViewer.pagesCount}
                 pageNumber={this.pdfViewer.currentPageNumber}
                 scale={isGalleryZoomActive ? this.galleryController.scale : this.pdfViewer.currentScale}
+                {...(extraProps || {})}
             />,
         );
     }
