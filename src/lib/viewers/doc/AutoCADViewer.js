@@ -1,15 +1,19 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import Thumbnail from '../../Thumbnail';
 import DocumentViewer from './DocumentViewer';
+import AutoCADExplodedView from './AutoCADExplodedView';
 import AutoCADReviewPanel from './AutoCADReviewPanel';
 import { METADATA } from '../../constants';
 import { MISSING_EXTERNAL_REFS } from '../../events';
+import { releaseCanvas, renderLayerCanvases } from './autocadExplodeRender';
 import {
     createScaleFromCalibration,
     formatMeasureDistance,
     getLayerItems,
     getPdfDistance,
     getSheetLabels,
+    groupLayersForExplode,
     isDwgReviewPocEnabled,
 } from './autocadReviewUtils';
 import './AutoCADReviewPanel.scss';
@@ -25,6 +29,14 @@ class AutoCADViewer extends DocumentViewer {
 
         this.calibrateMeasure = this.calibrateMeasure.bind(this);
         this.clearMeasureScale = this.clearMeasureScale.bind(this);
+        this.closeExplodedView = this.closeExplodedView.bind(this);
+        this.handleExplodeAutoRotate = this.handleExplodeAutoRotate.bind(this);
+        this.handleExplodeFocus = this.handleExplodeFocus.bind(this);
+        this.handleExplodeHover = this.handleExplodeHover.bind(this);
+        this.handleExplodeReset = this.handleExplodeReset.bind(this);
+        this.handleExplodeSpread = this.handleExplodeSpread.bind(this);
+        this.handleExplodeStageRef = this.handleExplodeStageRef.bind(this);
+        this.openExplodedView = this.openExplodedView.bind(this);
         this.handleLayerToggle = this.handleLayerToggle.bind(this);
         this.handleMeasureClick = this.handleMeasureClick.bind(this);
         this.toggleMeasure = this.toggleMeasure.bind(this);
@@ -178,6 +190,46 @@ class AutoCADViewer extends DocumentViewer {
         this.reviewSheets = getSheetLabels(pageLabels, pageCount);
         this.reviewOcConfig = ocConfig;
         this.reviewLayers = getLayerItems(ocConfig);
+        this.renderReviewPanel();
+        this.loadSheetThumbnails();
+    }
+
+    /**
+     * Render each layout page as a thumbnail, same renderer as the left rail.
+     *
+     * @return {Promise<void>}
+     */
+    async loadSheetThumbnails() {
+        if (!this.isReviewPocEnabled() || !this.pdfViewer || !this.reviewSheets.length) {
+            return;
+        }
+
+        if (!this.sheetThumbnailer) {
+            this.sheetThumbnailer = new Thumbnail(this.pdfViewer, this.preloader);
+        }
+
+        try {
+            await this.sheetThumbnailer.init();
+        } catch (err) {
+            return;
+        }
+
+        const sheets = this.reviewSheets;
+        await Promise.all(
+            sheets.map(async (sheet, index) => {
+                try {
+                    const thumbnailSrc = await this.sheetThumbnailer.getThumbnailDataURL(sheet.pageNumber, {
+                        thumbMaxWidth: 240,
+                    });
+                    if (this.reviewSheets[index]) {
+                        this.reviewSheets[index] = { ...this.reviewSheets[index], thumbnailSrc };
+                    }
+                } catch (err) {
+                    // Leave the sheet as a labeled placeholder if render fails.
+                }
+            }),
+        );
+
         this.renderReviewPanel();
     }
 
@@ -361,6 +413,7 @@ class AutoCADViewer extends DocumentViewer {
                 onCalibrate={this.calibrateMeasure}
                 onClearScale={this.clearMeasureScale}
                 onClose={this.toggleReviewPanel}
+                onExplode={this.openExplodedView}
                 onLayerToggle={this.handleLayerToggle}
                 onMeasureToggle={this.toggleMeasure}
                 onSheetSelect={this.setPage}
@@ -370,12 +423,189 @@ class AutoCADViewer extends DocumentViewer {
         );
     }
 
+    /**
+     * Experimental exploded view: each visible layer group of the current sheet
+     * becomes a glowing plane in a three.js stack.
+     *
+     * @return {Promise<void>}
+     */
+    async openExplodedView() {
+        if (this.explodeHostEl || !this.pdfViewer || !this.pdfViewer.pdfDocument) {
+            return;
+        }
+
+        const pageNumber = this.pdfViewer.currentPageNumber || 1;
+        const sheet = (this.reviewSheets || []).find(item => item.pageNumber === pageNumber);
+        const groups = groupLayersForExplode(this.reviewLayers);
+        const token = Symbol('explode');
+
+        this.explodeToken = token;
+        this.explodeState = {
+            activeIndex: null,
+            autoRotate: true,
+            layers: [],
+            progressLabel: null,
+            sheetLabel: sheet ? sheet.label : `Page ${pageNumber}`,
+            spread: 0.65,
+            status: 'loading',
+        };
+        this.explodeHostEl = document.createElement('div');
+        this.explodeHostEl.className = 'bp-AutoCADExplodeHost';
+        this.containerEl.appendChild(this.explodeHostEl);
+        this.explodeRoot = createRoot(this.explodeHostEl);
+        this.renderExplodedView();
+
+        const isCancelled = () => this.explodeToken !== token;
+
+        try {
+            const [sceneModule, result] = await Promise.all([
+                import(/* webpackChunkName: "autocad-exploded-scene" */ './AutoCADExplodedScene'),
+                renderLayerCanvases({
+                    groups,
+                    isCancelled,
+                    onProgress: (done, total) => {
+                        if (!isCancelled()) {
+                            this.updateExplodedView({ progressLabel: `Rendering layer ${done} of ${total}…` });
+                        }
+                    },
+                    pageNumber,
+                    pdfDocument: this.pdfViewer.pdfDocument,
+                }),
+            ]);
+
+            if (isCancelled() || !result) {
+                if (result) {
+                    result.layers.forEach(layer => releaseCanvas(layer.canvas));
+                }
+                return;
+            }
+
+            this.explodeCanvases = result.layers.map(layer => layer.canvas);
+            if (!result.layers.length || !this.explodeStageEl) {
+                this.updateExplodedView({ status: 'empty' });
+                return;
+            }
+
+            const Scene = sceneModule.default;
+            this.explodeScene = new Scene(this.explodeStageEl, {
+                onHover: index => this.updateExplodedView({ hoverIndex: index }),
+                onSelect: index => this.updateExplodedView({ activeIndex: index }),
+            });
+            this.explodeScene.setLayers(result.layers, result.aspect);
+            this.explodeScene.setAutoRotate(this.explodeState.autoRotate);
+            this.explodeScene.setSpread(this.explodeState.spread);
+
+            this.updateExplodedView({
+                layers: result.layers.map(({ color, key, name }) => ({ color, key, name })),
+                status: 'ready',
+            });
+        } catch (err) {
+            if (!isCancelled()) {
+                this.updateExplodedView({ status: 'error' });
+            }
+        }
+    }
+
+    closeExplodedView() {
+        this.explodeToken = null;
+        if (this.explodeScene) {
+            this.explodeScene.destroy();
+            this.explodeScene = null;
+        }
+        (this.explodeCanvases || []).forEach(releaseCanvas);
+        this.explodeCanvases = null;
+        if (this.explodeRoot) {
+            this.explodeRoot.unmount();
+            this.explodeRoot = null;
+        }
+        if (this.explodeHostEl && this.explodeHostEl.parentNode) {
+            this.explodeHostEl.parentNode.removeChild(this.explodeHostEl);
+        }
+        this.explodeHostEl = null;
+        this.explodeStageEl = null;
+    }
+
+    handleExplodeStageRef(el) {
+        this.explodeStageEl = el;
+    }
+
+    handleExplodeSpread(spread) {
+        if (this.explodeScene) {
+            this.explodeScene.setSpread(spread);
+        }
+        this.updateExplodedView({ spread });
+    }
+
+    handleExplodeAutoRotate() {
+        const autoRotate = !this.explodeState.autoRotate;
+        if (this.explodeScene) {
+            this.explodeScene.setAutoRotate(autoRotate);
+        }
+        this.updateExplodedView({ autoRotate });
+    }
+
+    handleExplodeFocus(index) {
+        if (this.explodeScene) {
+            this.explodeScene.setFocus(index);
+        }
+        this.updateExplodedView({ activeIndex: index });
+    }
+
+    handleExplodeHover(index) {
+        if (this.explodeScene) {
+            this.explodeScene.setHover(index);
+        }
+    }
+
+    handleExplodeReset() {
+        if (this.explodeScene) {
+            this.explodeScene.resetCamera();
+        }
+    }
+
+    updateExplodedView(changes) {
+        if (!this.explodeState) {
+            return;
+        }
+        const { hoverIndex, ...rest } = changes;
+        this.explodeState = { ...this.explodeState, ...rest };
+        if (hoverIndex !== undefined) {
+            this.explodeState.hoverIndex = hoverIndex;
+        }
+        this.renderExplodedView();
+    }
+
+    renderExplodedView() {
+        if (!this.explodeRoot) {
+            return;
+        }
+        const { activeIndex, hoverIndex, ...state } = this.explodeState;
+        this.explodeRoot.render(
+            <AutoCADExplodedView
+                {...state}
+                activeIndex={hoverIndex != null ? hoverIndex : activeIndex}
+                onAutoRotateToggle={this.handleExplodeAutoRotate}
+                onClose={this.closeExplodedView}
+                onLayerFocus={this.handleExplodeFocus}
+                onLayerHover={this.handleExplodeHover}
+                onResetCamera={this.handleExplodeReset}
+                onSpreadChange={this.handleExplodeSpread}
+                onStageRef={this.handleExplodeStageRef}
+            />,
+        );
+    }
+
     teardownReviewPoc() {
+        this.closeExplodedView();
         if (this.docEl) {
             this.docEl.removeEventListener('click', this.handleMeasureClick, true);
             this.docEl.classList.remove('bp-AutoCADReview-measuring');
         }
         this.clearMeasureOverlay();
+        if (this.sheetThumbnailer) {
+            this.sheetThumbnailer.destroy();
+            this.sheetThumbnailer = null;
+        }
         if (this.reviewPanelRoot) {
             this.reviewPanelRoot.unmount();
             this.reviewPanelRoot = null;

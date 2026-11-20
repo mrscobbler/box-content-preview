@@ -159,6 +159,84 @@ export function formatMeasureDistance(pdfDistance, scale) {
 }
 
 /**
+ * Group key for a CAD layer name: xref prefix (`XREF|A-WALL` → `XREF`), else the
+ * discipline prefix before the first separator (`A-WALL-FULL` → `A`).
+ *
+ * @param {string} name
+ * @return {string}
+ */
+export function getLayerGroupKey(name) {
+    const value = String(name == null ? '' : name).trim();
+    if (!value) {
+        return '';
+    }
+    const xrefIndex = value.indexOf('|');
+    if (xrefIndex > 0) {
+        return value.slice(0, xrefIndex);
+    }
+    const [prefix] = value.split(/[-_$.\s]/);
+    return prefix || value;
+}
+
+/**
+ * Turn visible OCG layers into at most `maxGroups` planes for the exploded view.
+ * Small layer sets get one plane per layer; larger sets are grouped by prefix, and
+ * the smallest groups are folded into "Other" so the stack stays readable.
+ *
+ * @param {Array<{id: string, name: string, visible: boolean}>} layers
+ * @param {number} [maxGroups]
+ * @return {Array<{key: string, name: string, layerIds: string[]}>}
+ */
+export function groupLayersForExplode(layers, maxGroups = 10) {
+    const visible = (Array.isArray(layers) ? layers : []).filter(layer => layer && layer.visible !== false);
+    const limit = Math.max(1, Math.floor(Number(maxGroups)) || 1);
+
+    if (visible.length <= limit) {
+        return visible.map(layer => ({ key: layer.id, name: layer.name, layerIds: [layer.id] }));
+    }
+
+    const byKey = new Map();
+    visible.forEach(layer => {
+        const key = getLayerGroupKey(layer.name) || layer.id;
+        if (!byKey.has(key)) {
+            byKey.set(key, { key, name: key, layerIds: [] });
+        }
+        byKey.get(key).layerIds.push(layer.id);
+    });
+
+    const groups = Array.from(byKey.values());
+    if (groups.length <= limit) {
+        return groups;
+    }
+
+    const keep = new Set(
+        groups
+            .slice()
+            .sort((a, b) => b.layerIds.length - a.layerIds.length)
+            .slice(0, limit - 1)
+            .map(group => group.key),
+    );
+    const kept = groups.filter(group => keep.has(group.key));
+    const other = groups.filter(group => !keep.has(group.key)).reduce((acc, group) => acc.concat(group.layerIds), []);
+
+    return kept.concat({ key: '__other__', name: 'Other', layerIds: other });
+}
+
+/**
+ * Vertical offsets for `count` stacked planes, centered on 0.
+ *
+ * @param {number} count
+ * @param {number} spacing
+ * @return {number[]}
+ */
+export function getExplodeOffsets(count, spacing) {
+    const total = Math.max(0, Math.floor(Number(count)) || 0);
+    const gap = Number(spacing) || 0;
+    const mid = (total - 1) / 2;
+    return Array.from({ length: total }, (_, index) => (index - mid) * gap);
+}
+
+/**
  * Query param `dwgReview` wins, then viewer option enableDwgReviewPoc,
  * then default on outside production/test so local `yarn start:dev` is playable.
  *

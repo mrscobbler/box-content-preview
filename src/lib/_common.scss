@@ -274,3 +274,18 @@ $overlay-z-index: 190;
 .bp-container .bp-btn-primary {
     color: #fff;
 }
+
+.bp-local-badge {
+    pointer-events: none;
+    position: absolute;
+    z-index: 100;
+    bottom: 34px;
+    left: 8px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 11px;
+    line-height: 1;
+    color: #fff;
+    background-color: rgb(0 97 213 / 88%);
+}

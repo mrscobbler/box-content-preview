@@ -4,6 +4,7 @@ import './AutoCADReviewPanel.scss';
 export type SheetItem = {
     label: string;
     pageNumber: number;
+    thumbnailSrc?: string | null;
 };
 
 export type LayerItem = {
@@ -22,6 +23,7 @@ export type Props = {
     onCalibrate: (knownLength: string, unit: string) => void;
     onClearScale?: () => void;
     onClose: () => void;
+    onExplode?: () => void;
     onLayerToggle: (id: string, visible: boolean) => void;
     onMeasureToggle: () => void;
     onSheetSelect: (pageNumber: number) => void;
@@ -41,6 +43,7 @@ export default function AutoCADReviewPanel({
     onCalibrate,
     onClearScale,
     onClose,
+    onExplode,
     onLayerToggle,
     onMeasureToggle,
     onSheetSelect,
@@ -77,19 +80,33 @@ export default function AutoCADReviewPanel({
                 {sheets.length === 0 ? (
                     <p className="bp-AutoCADReviewPanel-empty">No pages in this PDF yet.</p>
                 ) : (
-                    <ul className="bp-AutoCADReviewPanel-list">
+                    <ul className="bp-AutoCADReviewPanel-sheetList">
                         {sheets.map(sheet => (
                             <li key={sheet.pageNumber}>
                                 <button
                                     aria-current={sheet.pageNumber === currentPage ? 'page' : undefined}
+                                    aria-label={sheet.label}
                                     className={`bp-AutoCADReviewPanel-sheet${
                                         sheet.pageNumber === currentPage ? ' bp-is-current' : ''
                                     }`}
                                     onClick={(): void => onSheetSelect(sheet.pageNumber)}
                                     type="button"
                                 >
-                                    <span className="bp-AutoCADReviewPanel-sheetIndex">{sheet.pageNumber}</span>
-                                    <span className="bp-AutoCADReviewPanel-sheetLabel">{sheet.label}</span>
+                                    <span className="bp-AutoCADReviewPanel-sheetPreview">
+                                        {sheet.thumbnailSrc ? (
+                                            <img
+                                                alt=""
+                                                className="bp-AutoCADReviewPanel-sheetImage"
+                                                src={sheet.thumbnailSrc}
+                                            />
+                                        ) : (
+                                            <span className="bp-AutoCADReviewPanel-sheetPlaceholder" />
+                                        )}
+                                    </span>
+                                    <span className="bp-AutoCADReviewPanel-sheetCaption">
+                                        <span className="bp-AutoCADReviewPanel-sheetIndex">{sheet.pageNumber}</span>
+                                        <span className="bp-AutoCADReviewPanel-sheetLabel">{sheet.label}</span>
+                                    </span>
                                 </button>
                             </li>
                         ))}
@@ -104,21 +121,34 @@ export default function AutoCADReviewPanel({
                         This PDF has no optional content groups. CAD layers were not exported, so none can be toggled.
                     </p>
                 ) : (
-                    <ul className="bp-AutoCADReviewPanel-list">
-                        {layers.map(layer => (
-                            <li key={layer.id}>
-                                <label className="bp-AutoCADReviewPanel-layer" htmlFor={`bp-dwg-layer-${layer.id}`}>
-                                    <input
-                                        checked={layer.visible}
-                                        id={`bp-dwg-layer-${layer.id}`}
-                                        onChange={(event): void => onLayerToggle(layer.id, event.target.checked)}
-                                        type="checkbox"
-                                    />
-                                    <span>{layer.name}</span>
-                                </label>
-                            </li>
-                        ))}
-                    </ul>
+                    <>
+                        {onExplode && (
+                            <button
+                                className="bp-AutoCADReviewPanel-explodeBtn"
+                                data-testid="bp-AutoCADReviewPanel-explode"
+                                disabled={!layers.some(layer => layer.visible)}
+                                onClick={onExplode}
+                                type="button"
+                            >
+                                Explode layers in 3D
+                            </button>
+                        )}
+                        <ul className="bp-AutoCADReviewPanel-list">
+                            {layers.map(layer => (
+                                <li key={layer.id}>
+                                    <label className="bp-AutoCADReviewPanel-layer" htmlFor={`bp-dwg-layer-${layer.id}`}>
+                                        <input
+                                            checked={layer.visible}
+                                            id={`bp-dwg-layer-${layer.id}`}
+                                            onChange={(event): void => onLayerToggle(layer.id, event.target.checked)}
+                                            type="checkbox"
+                                        />
+                                        <span>{layer.name}</span>
+                                    </label>
+                                </li>
+                            ))}
+                        </ul>
+                    </>
                 )}
             </section>
 

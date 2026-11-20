@@ -16,6 +16,7 @@ module.exports = {
         'box-readable-time-messages': '@box/readable-time/i18n/en-US',
         'react-intl': '<rootDir>/build/jest/react-intl-mock.js',
         '^@box/blueprint-web-assets/(.*)$': '<rootDir>/node_modules/@box/blueprint-web-assets/dist/$1',
+        '^dxf-viewer$': '<rootDir>/src/lib/viewers/dxf/dxfViewerMock.js',
         THREE: '<rootDir>/src/third-party/model3d/1.12.0/three.min.js',
     },
     restoreMocks: true,

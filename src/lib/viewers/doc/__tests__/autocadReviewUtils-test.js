@@ -1,9 +1,12 @@
 import {
     createScaleFromCalibration,
     formatMeasureDistance,
+    getExplodeOffsets,
+    getLayerGroupKey,
     getLayerItems,
     getPdfDistance,
     getSheetLabels,
+    groupLayersForExplode,
     isDwgReviewPocEnabled,
 } from '../autocadReviewUtils';
 
@@ -76,6 +79,60 @@ describe('lib/viewers/doc/autocadReviewUtils', () => {
         test('should create a scale from a known length', () => {
             expect(createScaleFromCalibration(10, 40, 'ft')).toEqual({ unitsPerPdfUnit: 4, unit: 'ft' });
             expect(createScaleFromCalibration(0, 40, 'ft')).toBeNull();
+        });
+    });
+
+    describe('getLayerGroupKey()', () => {
+        test('should use the xref prefix, then the discipline prefix', () => {
+            expect(getLayerGroupKey('SITE|A-WALL')).toBe('SITE');
+            expect(getLayerGroupKey('A-WALL-FULL')).toBe('A');
+            expect(getLayerGroupKey('E_POWER')).toBe('E');
+            expect(getLayerGroupKey('0')).toBe('0');
+            expect(getLayerGroupKey('')).toBe('');
+        });
+    });
+
+    describe('groupLayersForExplode()', () => {
+        const layer = (id, name, visible = true) => ({ id, name, visible });
+
+        test('should give each visible layer its own plane when under the limit', () => {
+            expect(
+                groupLayersForExplode([layer('a', 'A-WALL'), layer('b', 'E-POWR', false), layer('c', 'M-HVAC')], 4),
+            ).toEqual([
+                { key: 'a', name: 'A-WALL', layerIds: ['a'] },
+                { key: 'c', name: 'M-HVAC', layerIds: ['c'] },
+            ]);
+        });
+
+        test('should group by prefix and fold the smallest groups into Other', () => {
+            const layers = [
+                layer('1', 'A-WALL'),
+                layer('2', 'A-DOOR'),
+                layer('3', 'A-GLAZ'),
+                layer('4', 'E-POWR'),
+                layer('5', 'E-LITE'),
+                layer('6', 'M-HVAC'),
+                layer('7', 'P-SANR'),
+            ];
+
+            expect(groupLayersForExplode(layers, 3)).toEqual([
+                { key: 'A', name: 'A', layerIds: ['1', '2', '3'] },
+                { key: 'E', name: 'E', layerIds: ['4', '5'] },
+                { key: '__other__', name: 'Other', layerIds: ['6', '7'] },
+            ]);
+        });
+
+        test('should return nothing when no layers are visible', () => {
+            expect(groupLayersForExplode([layer('a', 'A-WALL', false)])).toEqual([]);
+            expect(groupLayersForExplode(null)).toEqual([]);
+        });
+    });
+
+    describe('getExplodeOffsets()', () => {
+        test('should center the stack on zero', () => {
+            expect(getExplodeOffsets(3, 2)).toEqual([-2, 0, 2]);
+            expect(getExplodeOffsets(1, 2)).toEqual([0]);
+            expect(getExplodeOffsets(0, 2)).toEqual([]);
         });
     });
 

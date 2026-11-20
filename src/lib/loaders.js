@@ -1,4 +1,5 @@
 import ArchiveLoader from './viewers/archive/ArchiveLoader';
+import DxfLoader from './viewers/dxf/DxfLoader';
 import ImageLoader from './viewers/image/ImageLoader';
 import Image360Loader from './viewers/box3d/image360/Image360Loader';
 import SWFLoader from './viewers/swf/SWFLoader';
@@ -12,6 +13,7 @@ import OfficeLoader from './viewers/office/OfficeLoader';
 
 // Order in this list matters
 export default [
+    DxfLoader, // experimental client DXF render; ?dxfReview=1, or on by default in start:dev
     ArchiveLoader,
     TextLoader, // should come before document
     OfficeLoader, // should come before document

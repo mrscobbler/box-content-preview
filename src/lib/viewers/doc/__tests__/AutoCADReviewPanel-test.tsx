@@ -42,4 +42,39 @@ describe('AutoCADReviewPanel', () => {
         await userEvent.click(screen.getByRole('button', { name: /c-101/i }));
         expect(onSheetSelect).toHaveBeenCalledWith(2);
     });
+
+    test('should open the exploded view only when a layer is visible', async () => {
+        const onExplode = jest.fn();
+        const { rerender } = getWrapper({ layers: [{ id: 'a', name: 'A-WALL', visible: false }], onExplode });
+        expect(screen.getByTestId('bp-AutoCADReviewPanel-explode')).toBeDisabled();
+
+        rerender(
+            <AutoCADReviewPanel
+                currentPage={1}
+                hasScale={false}
+                isMeasureActive={false}
+                layers={[{ id: 'a', name: 'A-WALL', visible: true }]}
+                onCalibrate={jest.fn()}
+                onClose={jest.fn()}
+                onExplode={onExplode}
+                onLayerToggle={jest.fn()}
+                onMeasureToggle={jest.fn()}
+                onSheetSelect={jest.fn()}
+                sheets={[]}
+            />,
+        );
+        await userEvent.click(screen.getByTestId('bp-AutoCADReviewPanel-explode'));
+        expect(onExplode).toHaveBeenCalled();
+    });
+
+    test('should render sheet thumbnails when the PDF page image is available', () => {
+        getWrapper({
+            sheets: [{ pageNumber: 1, label: 'C-101', thumbnailSrc: 'data:image/png;base64,abc' }],
+        });
+
+        expect(screen.getByRole('button', { name: 'C-101' }).querySelector('img')).toHaveAttribute(
+            'src',
+            'data:image/png;base64,abc',
+        );
+    });
 });

@@ -172,6 +172,9 @@ module.exports = {
         },
         extensions: ['.tsx', '.ts', '.js'],
         modules: [src, 'node_modules'],
+        fallback: {
+            fs: false,
+        },
     },
     stats: {
         assets: true,
